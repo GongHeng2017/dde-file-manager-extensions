@@ -26,6 +26,7 @@ static constexpr char kActionEncrypt[] { "com.deepin.filemanager.daemon.DiskEncr
 static constexpr char kActionDecrypt[] { "com.deepin.filemanager.daemon.DiskEncrypt.Decrypt" };
 static constexpr char kActionChgPwd[] { "com.deepin.filemanager.daemon.DiskEncrypt.ChangePassphrase" };
 static constexpr char kObjPath[] { "/com/deepin/filemanager/daemon/DiskEncrypt" };
+static constexpr char kBootUsecPath[] { "/boot/usec-crypt" };
 
 ReencryptWorkerV2 *gFstabEncWorker { nullptr };
 
@@ -66,6 +67,61 @@ QString DiskEncryptDBus::PrepareEncryptDisk(const QVariantMap &params)
                                         "",
                                         -kUserCancelled);
         return "";
+    }
+
+    QString tpmDevice = params.value(encrypt_param_keys::kKeyDevice).toString();
+    if (tpmDevice == "/dev/dm-1") {
+        const static QMap<int, QString> encMode {
+            { 0, "pin" },
+            { 1, "tpm-pin" },
+            { 2, "tpm" }
+        };
+
+        QJsonObject obj;
+        QString dev = params.value(encrypt_param_keys::kKeyDevice).toString();
+        QString dmDev = QString("dm-%1").arg(dev.mid(5));
+        QString uuid = QString("UUID=%1").arg(params.value(encrypt_param_keys::kKeyUUID).toString());
+
+        obj.insert("volume", dmDev);   // used to name a opened luks device.
+        obj.insert("device", uuid);   // used to locate the backing device.
+        obj.insert("device-path", dev);   // used to locate the backing device by device path.
+        obj.insert("device-name", params.value(encrypt_param_keys::kKeyDeviceName).toString());   // the device name display in dde-file-manager
+        obj.insert("device-mountpoint", params.value(encrypt_param_keys::kKeyMountPoint).toString());   // the mountpoint of the device
+        obj.insert("cipher", params.value(encrypt_param_keys::kKeyCipher).toString() + "-xts-plain64");
+        obj.insert("key-size", "256");
+        obj.insert("mode", encMode.value(params.value(encrypt_param_keys::kKeyEncMode).toInt()));
+
+        QString expPath = params.value(encrypt_param_keys::kKeyRecoveryExportPath).toString();
+        if (!expPath.isEmpty()) {
+            expPath.append(QString("/recovery_key_%1.txt").arg(dev.mid(5)));
+            expPath.replace("//", "/");
+        }
+        obj.insert("recoverykey-path", expPath);
+
+        QJsonDocument tpmConfig = QJsonDocument::fromJson(params.value(encrypt_param_keys::kKeyTPMConfig).toString().toLocal8Bit());
+        obj.insert("tpm-config", tpmConfig.object());   // the tpm info used to decrypt passphrase from tpm.
+        QJsonDocument doc(obj);
+
+        QString configPath = QString("%1/encrypt.json").arg(kBootUsecPath);
+        if (!tpmDevice.isEmpty()) {
+            configPath = QString("%1/encrypt_%2.json").arg(kBootUsecPath).arg(tpmDevice.mid(5));
+        }
+
+        QFile f(configPath);
+        if (f.exists())
+            qInfo() << "has pending job, the pending job will be replaced";
+
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            qWarning() << "cannot open file for write!";
+            return "Error";
+        }
+
+        f.write(doc.toJson());
+        f.flush();
+        f.close();
+
+        triggerReencrypt(tpmDevice);
+        return "OK";
     }
 
     auto jobID = JOB_ID.arg(QDateTime::currentMSecsSinceEpoch());

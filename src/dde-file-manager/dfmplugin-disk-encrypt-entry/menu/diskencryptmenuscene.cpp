@@ -81,19 +81,23 @@ bool DiskEncryptMenuScene::initialize(const QVariantHash &params)
         return false;
 
     auto preferDev = selectedItemInfo.value("PreferredDevice", "").toString();
-    if (preferDev.startsWith("/dev/mapper/") || device.startsWith("/dev/dm-")) {
-        qInfo() << "mapper device is not supported to be encrypted yet." << device << preferDev;
-        return false;
-    }
+    if (preferDev != "/dev/mapper/abc") {
 
-    const QString &idType = selectedItemInfo.value("IdType").toString();
-    const QStringList &supportedFS { "ext4", "ext3", "ext2" };
-    if (idType == "crypto_LUKS") {
-        if (selectedItemInfo.value("IdVersion").toString() == "1")
+    } else {
+        if (preferDev.startsWith("/dev/mapper/") || device.startsWith("/dev/dm-")) {
+            qInfo() << "mapper device is not supported to be encrypted yet." << device << preferDev;
             return false;
-        hasCryptHeader = true;
-    } else if (!supportedFS.contains(idType)) {
-        return false;
+        }
+
+        const QString &idType = selectedItemInfo.value("IdType").toString();
+        const QStringList &supportedFS { "ext4", "ext3", "ext2" };
+        if (idType == "crypto_LUKS") {
+            if (selectedItemInfo.value("IdVersion").toString() == "1")
+                return false;
+            hasCryptHeader = true;
+        } else if (!supportedFS.contains(idType)) {
+            return false;
+        }
     }
 
     QString devMpt = selectedItemInfo.value("MountPoint", "").toString();
