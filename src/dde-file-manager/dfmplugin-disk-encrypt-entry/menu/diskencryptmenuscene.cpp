@@ -449,9 +449,8 @@ QString DiskEncryptMenuScene::generateTPMConfig()
 {
     QString sessionHashAlgo, sessionKeyAlgo, primaryHashAlgo, primaryKeyAlgo, minorHashAlgo, minorKeyAlgo;
     if (!tpm_passphrase_utils::getAlgorithm(&sessionHashAlgo, &sessionKeyAlgo, &primaryHashAlgo, &primaryKeyAlgo, &minorHashAlgo, &minorKeyAlgo)) {
-        qWarning() << "cannot choose algorithm for tpm";
-        primaryHashAlgo = "sha256";
-        primaryKeyAlgo = "ecc";
+        qCritical() << "cannot choose algorithm for tpm";
+        return "";
     }
 
     QJsonObject tpmParams;
